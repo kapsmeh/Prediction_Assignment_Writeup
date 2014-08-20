@@ -1,0 +1,137 @@
+Report on Qualitative Activity Recognition of Weight Lifting Exercises
+========================================================
+
+
+### Following report predict the manner in which people exercise. Data used for this report can be downloaded from source http://groupware.les.inf.puc-rio.br/har
+
+### Data have "classe"" as the outcome variable which have 5 cateogrical values i.e. 
+* Class A -> exactly according to the specification.
+* Class B -> throwing the elbows to the front. 
+* Class C -> lifting the dumbbell only halfway. 
+* Class D -> lowering the dumbbell only halfway.
+* Class E -> and throwing the hips to the front.
+
+```{r downloadData,warning=FALSE,echo=FALSE,cache=TRUE}
+library(RCurl)
+#Downloading data
+
+#loading training data
+URL <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+x <- getURL(URL, ssl.verifypeer = FALSE)
+training <- read.csv(textConnection(x))
+
+#loading testing data
+URL <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+x <- getURL(URL, ssl.verifypeer = FALSE)
+testing <- read.csv(textConnection(x))
+```
+### Weight Lifting Exercise data contain lot of predictor variables but our goal will be to use only the predictors whose data come from the accelerometers put on the belt, forearm, arm and dumbell i.e.
+```{r selectionAccel,warning=FALSE,echo=FALSE,cache=TRUE}
+library(caret)
+index<-grep("^accel|^total_accel", names(testing))
+training<-training[,c(index,160)]
+testing<-testing[,c(index)]
+names(testing)
+```
+
+### As no validation set is available for calculating out of sample error rate, so we further split the 25% training set into validation set. Testing set will only be used for predicting 20 cases.
+```{r split,warning=FALSE,echo=FALSE,cache=TRUE}
+set.seed(2551)
+inTrain<-createDataPartition(y=training$classe,p=0.75,list=FALSE)
+training<-training[inTrain,]
+validation<-training[-inTrain,]
+```
+* Training set: `r dim(training)[1]` observations and `r dim(training)[2]` predictors
+* Validation set: `r dim(validation)[1]` observations and `r dim(validation)[2]` predictors
+
+## Overlay Density Plot
+### As can be seen in the overlay plot, predictor variables are non-linear in nature so models like random forest or ada-boost can be useful.
+```{r densPlot,warning=FALSE,echo=FALSE,fig.height=10,fig.width=10,cache=TRUE}
+library(caret)
+library(AppliedPredictiveModeling)
+
+# transparentTheme(trans = .4)
+# featurePlot(x=training[,-17],y = training$classe,plot="pairs",auto.key = list(columns = 5))
+
+transparentTheme(trans = .9)
+featurePlot(x = training[,-17],
+                  y = training$classe,
+                  plot = "density",
+                  ## Pass in options to xyplot() to 
+                  ## make it prettier
+                  scales = list(x = list(relation="free"),
+                                y = list(relation="free")),
+                  adjust = 1.5,
+                  pch = "|",
+                  layout = c(4, 4),
+                  auto.key = list(columns = 5))
+```
+## 1. Random Forest model with only boosting as resampling method, name it "first"
+```{r builds,warning=FALSE,echo=FALSE,fig.height=10,fig.width=10,cache=TRUE}
+library(caret)
+set.seed(425)
+modelFitsimple<-train(classe~.,method="rf",data=training)
+modelFitsimple$finalModel
+```
+### Plotting the "first" model
+```{r plotms,warning=FALSE,echo=FALSE,fig.height=4,fig.width=4,cache=TRUE}
+trellis.par.set(caretTheme())
+plot(modelFitsimple$finalModel,main="Error on train set")
+```
+### Out of sample error on validation set for "first" model
+```{r confusions,warning=FALSE,echo=FALSE,fig.height=10,fig.width=10,cache=TRUE}
+confusionMatrix(predict(modelFitsimple$finalModel,validation),validation$classe)
+```
+
+## We then tried k fold cross validation(k=10 and k=5) as resampling method with center and scale preprocessing
+```{r cv,warning=FALSE,echo=TRUE,fig.height=10,fig.width=10,cache=TRUE}
+library(caret)
+trnControl<-trainControl(method="cv",preProcOptions=c("center","scale"),number=10)
+trnControl1<-trainControl(method="cv",preProcOptions=c("center","scale"),number=5)
+```
+
+
+## 2. Random forest model with k fold cross validations (k=10 and 5) and preprocessing, name it "second" and "third"
+```{r build,warning=FALSE,echo=FALSE,fig.height=10,fig.width=10,cache=TRUE}
+library(caret)
+set.seed(825)
+modelFit<-train(classe~.,method="rf",trControl=trnControl,data=training)
+modelFit$finalModel
+
+set.seed(625)
+modelFit1<-train(classe~.,method="rf",trControl=trnControl1,data=training)
+modelFit1$finalModel
+
+```
+### Plotting the "second" model
+```{r plotm,warning=FALSE,echo=FALSE,fig.height=4,fig.width=4,cache=TRUE}
+trellis.par.set(caretTheme())
+plot(modelFit$finalModel,main="Error on train set, CV=10")
+```
+### Out of sample error on validation set for "second" model
+```{r confusion,warning=FALSE,echo=FALSE,fig.height=10,fig.width=10,cache=TRUE}
+confusionMatrix(predict(modelFit$finalModel,validation),validation$classe)
+```
+### Plotting the "third" model
+```{r plotm1,warning=FALSE,echo=FALSE,fig.height=4,fig.width=4,cache=TRUE}
+trellis.par.set(caretTheme())
+plot(modelFit1$finalModel,main="Error on train set, CV=5")
+```
+### Out of sample error on validation set "third" model
+```{r confusion1,warning=FALSE,echo=FALSE,fig.height=10,fig.width=10,cache=TRUE}
+confusionMatrix(predict(modelFit1$finalModel,validation),validation$classe)
+```
+
+## 3. Prediction of all models
+### Prediction of testing set with "first" model
+```{r testings,warning=FALSE,echo=FALSE,fig.height=10,fig.width=10,cache=TRUE}
+predict(modelFitsimple$finalModel,testing)
+```
+### Prediction of testing set with "second" model
+```{r testing,warning=FALSE,echo=FALSE,fig.height=10,fig.width=10,cache=TRUE}
+predict(modelFit$finalModel,testing)
+```
+### Prediction of testing set with "third" model
+```{r testing1,warning=FALSE,echo=FALSE,fig.height=10,fig.width=10,cache=TRUE}
+predict(modelFit1$finalModel,testing)
+```
